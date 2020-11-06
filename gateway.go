@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 
 	"github.com/coredns/coredns/plugin"
@@ -30,26 +31,30 @@ var orderedResources = []*resourceWithIndex{
 }
 
 var (
-	defaultTTL        = uint32(5)
+	ttlLowDefault     = uint32(60)
+	ttlHighDefault    = uint32(3600)
 	defaultApex       = "dns"
 	defaultHostmaster = "hostmaster"
 )
 
 // Gateway stores all runtime configuration of a plugin
 type Gateway struct {
-	Next       plugin.Handler
-	Zones      []string
-	Resources  []*resourceWithIndex
-	ttl        uint32
-	Controller *KubeController
-	apex       string
-	hostmaster string
+	Next             plugin.Handler
+	Zones            []string
+	Resources        []*resourceWithIndex
+	ttlLow           uint32
+	ttlHigh          uint32
+	Controller       *KubeController
+	apex             string
+	hostmaster       string
+	ExternalAddrFunc func(request.Request) []dns.RR
 }
 
 func newGateway() *Gateway {
 	return &Gateway{
 		Resources:  orderedResources,
-		ttl:        defaultTTL,
+		ttlLow:     ttlLowDefault,
+		ttlHigh:    ttlHighDefault,
 		apex:       defaultApex,
 		hostmaster: defaultHostmaster,
 	}
@@ -171,13 +176,13 @@ func (gw *Gateway) A(state request.Request, results []net.IP) (records []dns.RR)
 	for _, result := range results {
 		if _, ok := dup[result.String()]; !ok {
 			dup[result.String()] = struct{}{}
-			records = append(records, &dns.A{Hdr: dns.RR_Header{Name: state.Name(), Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: gw.ttl}, A: result})
+			records = append(records, &dns.A{Hdr: dns.RR_Header{Name: state.Name(), Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: gw.ttlLow}, A: result})
 		}
 	}
 	return records
 }
 
-func (gw *Gateway) selfAddress(state request.Request) (records []dns.RR) {
+func (gw *Gateway) SelfAddress(state request.Request) (records []dns.RR) {
 	// TODO: need to do self-index lookup for that i need
 	// a) my own namespace - easy
 	// b) my own serviceName - CoreDNS/k does that via localIP->Endpoint->Service
@@ -185,23 +190,23 @@ func (gw *Gateway) selfAddress(state request.Request) (records []dns.RR) {
 
 	// As a workaround I'm reading an env variable (with a default)
 	//// TODO: update docs to surface this knob
-	//index := os.Getenv("EXTERNAL_SVC")
-	//if index == "" {
-	//	index = defaultSvc
-	//}
-	//
-	//var addrs []net.IP
-	//for _, resource := range gw.Resources {
-	//	addrs = resource.lookup([]string{index})
-	//	if len(addrs) > 0 {
-	//		break
-	//	}
-	//}
-	//
-	//m := new(dns.Msg)
-	//m.SetReply(state.Req)
-	//return gw.A(state, addrs)
-	return records
+	index := os.Getenv("EXTERNAL_SVC")
+	if index == "" {
+		index = defaultSvc
+	}
+
+	var addrs []net.IP
+	for _, resource := range gw.Resources {
+		addrs = resource.lookup([]string{index})
+		if len(addrs) > 0 {
+			break
+		}
+	}
+
+	m := new(dns.Msg)
+	m.SetReply(state.Req)
+	return gw.A(state, addrs)
+	//return records
 }
 
 // Strips the zone from FQDN and return a hostname

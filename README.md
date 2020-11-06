@@ -19,18 +19,33 @@ Currently only supports A-type queries, all other queries result in NODATA respo
 
 This plugin is **NOT** supposed to be used for intra-cluster DNS resolution and does not contain the default upstream [kubernetes](https://coredns.io/plugins/kubernetes/) plugin.
 
+## Install
+
+The recommended installation method is using the helm chart provided in the repo:
+
+```
+helm install exdns --set domain=foo ./charts/k8s-gateway
+```
+
+Alternatively, for labbing and testing purposes `k8s_gateway` can be deployed with a single manifest:
+
+```
+kubectl apply -f https://github.com/ori-edge/k8s_gateway/blob/master/examples/install-clusterwide.yml
+```
+
 ## Configure
 
 ```
 k8s_gateway [ZONE...] 
 ```
 
-Optionally, you can specify what kind of resources to watch and the default TTL to return in response, e.g.
+Optionally, you can specify what kind of resources to watch, default TTL to return in response and a default name to use for zone apex, e.g.
 
 ```
 k8s_gateway example.com {
     resources Ingress
     ttl 10
+    apex dns1
 }
 ```
 
@@ -82,6 +97,10 @@ $ dig @$ip -p 32553 myservicea.foo.org +short
 $ dig @$ip -p 32553 test.default.foo.org +short
 192.168.1.241
 ```
+
+## Notes regarding Zone Apex and NS server resolution
+
+Due to the fact that there is not nice way to discover NS server's own IP to respond to A queries, as a wokaround, it's possible to pass the name of the LoadBalancer service used to expose the CoreDNS instance as an environment variable `EXTERNAL_SVC`. If not set, the default fallback value of `external-dns.kube-system` will be used to look up the external IP of the CoreDNS service.
 
 ## Also see
 
