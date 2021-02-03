@@ -8,12 +8,27 @@ image:
 # Delegated domain
 domain: ""
 
-# Name to use for apex records
-apex: "dns"
-
 # TTL for non-apex responses (in seconds)
 ttl: 300
 
+# Resources (CPU, memory etc)
+resources:
+
+# Limit what kind of resources to watch, e.g. watchedResources: ["Ingress"]
+watchedResources: []
+
+# Service name of a secondary DNS server (should be `serviceName.namespace`)
+secondaryDNS: ""
+
+# Override the default `serviceName.namespace` domain apex
+apex: ""
+
+# Optional configuration option for DNS01 challenge that will redirect all acme
+# challenge requests to external cloud domain (e.g. managed by cert-manager)
+# See: https://cert-manager.io/docs/configuration/acme/dns01/
+dnsChallenge: 
+  enabled: false
+  domain: dns01.clouddns.com
 
 serviceAccount:
   create: true
