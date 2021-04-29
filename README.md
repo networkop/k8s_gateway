@@ -11,7 +11,7 @@ This plugin relies on it's own connection to the k8s API server and doesn't shar
 | Kind | Matching Against | External IPs are from | 
 | ---- | ---------------- | -------- |
 | Ingress | all FQDNs from `spec.rules[*].host` matching configured zones | `.status.loadBalancer.ingress` |
-| Service[*] | `name.namespace` + any of the configured zones | `.status.loadBalancer.ingress` | 
+| Service[*] | `name.namespace` + any of the configured zones OR any string specified in the `coredns.io/hostname` annotation (see [this](https://github.com/ori-edge/k8s_gateway/blob/master/kubernetes_test.go#L159) for an example) | `.status.loadBalancer.ingress` | 
 
 [*]: Only resolves service of type LoadBalancer
 
@@ -24,7 +24,8 @@ This plugin is **NOT** supposed to be used for intra-cluster DNS resolution and 
 The recommended installation method is using the helm chart provided in the repo:
 
 ```
-helm install exdns --set domain=foo ./charts/k8s-gateway
+helm repo add k8s_gateway https://ori-edge.github.io/k8s_gateway/
+helm install exdns --set domain=foo k8s_gateway/k8s-gateway
 ```
 
 Alternatively, for labbing and testing purposes `k8s_gateway` can be deployed with a single manifest:
@@ -50,6 +51,7 @@ k8s_gateway ZONE
     ttl TTL
     apex APEX
     secondary SECONDARY
+    kubeconfig KUBECONFIG [CONTEXT]
 }
 ```
 
@@ -58,6 +60,7 @@ k8s_gateway ZONE
 * `ttl` can be used to override the default TTL value of 60 seconds.
 * `apex` can be used to override the default apex record value of `{ReleaseName}-k8s-gateway.{Namespace}`
 * `secondary` can be used to specify the optional apex record value of a peer nameserver running in the cluster (see `Dual Nameserver Deployment` section below).
+* `kubeconfig` can be used to connect to a remote Kubernetes cluster using a kubeconfig file. `CONTEXT` is optional, if not set, then the current context specified in kubeconfig will be used. It supports TLS, username and password, or token-based authentication.
 
 Example: 
 
@@ -67,6 +70,7 @@ k8s_gateway example.com {
     ttl 30
     apex exdns-1-k8s-gateway.kube-system
     secondary exdns-2-k8s-gateway.kube-system
+    kubeconfig /.kube/config
 }
 ```
 
@@ -156,7 +160,7 @@ $ dig @$ip -p 32553 test.default.foo.org +short
 192.168.1.241
 ```
 
-
 ## Also see
 
-[Blogpost](https://medium.com/from-the-edge/a-self-hosted-external-dns-resolver-for-kubernetes-111a27d6fc2c)
+[Blogpost](https://medium.com/from-the-edge/a-self-hosted-external-dns-resolver-for-kubernetes-111a27d6fc2c)  
+[Helm repo guide](https://medium.com/@mattiaperi/create-a-public-helm-chart-repository-with-github-pages-49b180dbb417)
