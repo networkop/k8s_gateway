@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/coredns/coredns/plugin"
+	"github.com/coredns/coredns/plugin/pkg/fall"
 	"github.com/coredns/coredns/request"
 	"github.com/miekg/dns"
 )
@@ -28,8 +29,8 @@ var orderedResources = []*resourceWithIndex{
 }
 
 var (
-	ttlLowDefault     = uint32(60)
-	ttlHighDefault    = uint32(3600)
+	ttlDefault        = uint32(60)
+	ttlSOA            = uint32(60)
 	defaultApex       = "dns1.kube-system"
 	defaultHostmaster = "hostmaster"
 	defaultSecondNS   = ""
@@ -41,7 +42,7 @@ type Gateway struct {
 	Zones            []string
 	Resources        []*resourceWithIndex
 	ttlLow           uint32
-	ttlHigh          uint32
+	ttlSOA           uint32
 	Controller       *KubeController
 	apex             string
 	hostmaster       string
@@ -49,13 +50,15 @@ type Gateway struct {
 	configFile       string
 	configContext    string
 	ExternalAddrFunc func(request.Request) []dns.RR
+
+	Fall fall.F
 }
 
 func newGateway() *Gateway {
 	return &Gateway{
 		Resources:  orderedResources,
-		ttlLow:     ttlLowDefault,
-		ttlHigh:    ttlHighDefault,
+		ttlLow:     ttlDefault,
+		ttlSOA:     ttlSOA,
 		apex:       defaultApex,
 		secondNS:   defaultSecondNS,
 		hostmaster: defaultHostmaster,
@@ -142,7 +145,12 @@ func (gw *Gateway) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Ms
 	m := new(dns.Msg)
 	m.SetReply(state.Req)
 
+	// If there's no match, fall through or return NXDOMAIN
 	if len(addrs) == 0 {
+		if gw.Fall.Through(qname) {
+			return plugin.NextOrFailure(gw.Name(), gw.Next, ctx, w, r)
+		}
+
 		m.Rcode = dns.RcodeNameError
 		m.Ns = []dns.RR{gw.soa(state)}
 		if err := w.WriteMsg(m); err != nil {
@@ -161,8 +169,12 @@ func (gw *Gateway) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Ms
 		m.Ns = []dns.RR{gw.soa(state)}
 	}
 
-	// If there's no match, return the SOA
+	// If there's no match, fall through or return the SOA
 	if len(m.Answer) == 0 {
+		if gw.Fall.Through(qname) {
+			return plugin.NextOrFailure(gw.Name(), gw.Next, ctx, w, r)
+		}
+
 		m.Ns = []dns.RR{gw.soa(state)}
 	}
 
